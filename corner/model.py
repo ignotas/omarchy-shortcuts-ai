@@ -1502,8 +1502,18 @@ def discovery_rows(
 
 
 def suggestion_rows(ranked: list[dict]) -> list[dict]:
-    """What the panel renders. Percents are for the person, not for Jev."""
-    return [_panel_row(command, int(round(command["p"] * 100))) for command in ranked]
+    """What the panel renders. Percents are for the person, not for Jev.
+
+    A mouse-action lead that Jev did not score keeps a blank percent.
+    """
+    rows = []
+    for command in ranked:
+        if command.get("blank_percent"):
+            percent: int | str = ""
+        else:
+            percent = int(round(command["p"] * 100))
+        rows.append(_panel_row(command, percent))
+    return rows
 
 
 def unused_penalty(unused: dict | None, chord_id: object, now: float | None = None) -> float:
@@ -1644,6 +1654,7 @@ def offer_rows(
 
     A shortcut at full penalty yields to the next one. When every shortcut
     is fully aside, the card keeps the original order rather than going blank.
+    A shortcut led by the latest mouse action stays, and it stays first.
     """
     groups: dict[str, list[dict]] = {"app": [], "explore": []}
     plain: list[dict] = []
@@ -1659,6 +1670,8 @@ def offer_rows(
         ignored = unused_penalty(unused, ident, now)
         used = recent_use_penalty(stats, ident)
         score = base * (1 - ignored) * (1 - used)
+        if command.get("led"):
+            score = max(score, 0.01)
         if score <= 0:
             continue
         item = dict(command)
@@ -1667,6 +1680,7 @@ def offer_rows(
         groups[group].append(item)
     def _by_chance(command: dict) -> tuple:
         return (
+            0 if command.get("led") else 1,
             -command["p"],
             -float(command.get("raw") or command["p"]),
             str(command.get("description") or ""),
@@ -1784,6 +1798,135 @@ def order_saved(
     return matched + rest
 
 
+# A recorded desktop action, and the shortcut description that does the same thing.
+# Focus lines are not effects. The match is local: it never starts a Jev call.
+_EFFECTS = {
+    "opened wifi": ("network",),
+    "opened calendar": ("calendar",),
+    "opened audio": ("audio",),
+    "opened bluetooth": ("bluetooth",),
+    "opened power": ("power",),
+    "opened display": ("display",),
+    "opened menu": ("omarchy menu",),
+    "opened clipboard": ("clipboard",),
+    "opened emoji": ("emoji",),
+    "opened reminders": ("show reminders",),
+    "closed a window": ("close window",),
+    "fullscreen on": ("full screen",),
+    "fullscreen off": ("full screen",),
+    "floated a window": ("floating",),
+    "tiled a window": ("floating",),
+}
+
+
+def effect_needles(line: str) -> tuple[str, ...] | None:
+    """Shortcut phrases for one action line, or nothing when the line is not an effect."""
+    text = " ".join(str(line or "").casefold().split())
+    if text.startswith("workspace "):
+        number = text.split(" ", 1)[1]
+        if number.isdigit():
+            return (f"switch to workspace {number}",)
+        return None
+    return _EFFECTS.get(text)
+
+
+def latest_effect(actions: Iterable[str] | None) -> tuple[str, ...] | None:
+    """The newest effect in the short list. A later focus line does not hide it."""
+    for line in reversed(list(actions or [])):
+        needles = effect_needles(str(line or ""))
+        if needles:
+            return needles
+    return None
+
+
+def _matches_effect(description: str, needles: tuple[str, ...]) -> bool:
+    low = description.casefold()
+    for needle in needles:
+        if needle.startswith("switch to workspace "):
+            if low == needle:
+                return True
+            continue
+        if low == needle or needle in low:
+            return True
+    return False
+
+
+def command_for_effect(
+    commands: Iterable[dict],
+    needles: tuple[str, ...],
+    pool: Iterable[dict] = (),
+) -> dict | None:
+    """One shortcut for this effect. An exact description beats a longer one."""
+    scores: dict[str, float] = {}
+    for command in pool:
+        if not isinstance(command, dict):
+            continue
+        arg = str(command.get("arg") or "")
+        try:
+            share = float(command.get("p") or 0)
+        except (TypeError, ValueError):
+            share = 0.0
+        if share > scores.get(arg, 0.0):
+            scores[arg] = share
+    hits = [
+        command for command in commands
+        if isinstance(command, dict) and _matches_effect(str(command.get("description") or ""), needles)
+    ]
+    if not hits:
+        return None
+
+    def _order(command: dict) -> tuple:
+        low = str(command.get("description") or "").casefold()
+        exact = 0 if any(low == needle for needle in needles) else 1
+        arg = str(command.get("arg") or "")
+        return (exact, len(low), -scores.get(arg, 0.0), low, arg)
+
+    hits.sort(key=_order)
+    return hits[0]
+
+
+def with_action_lead(
+    pool: list[dict],
+    commands: Iterable[dict],
+    actions: Iterable[str] | None,
+) -> list[dict]:
+    """Put the shortcut for the latest effect first. The saved ranking stays behind it.
+
+    A shortcut Jev scored at zero is still shown, with a blank percent.
+    """
+    needles = latest_effect(actions)
+    if not needles:
+        return pool
+    chosen = command_for_effect(commands, needles, pool)
+    if chosen is None:
+        return pool
+    arg = str(chosen.get("arg") or "")
+    rest: list[dict] = []
+    found = None
+    for command in pool:
+        if not isinstance(command, dict):
+            continue
+        if found is None and str(command.get("arg") or "") == arg:
+            found = dict(command)
+            continue
+        rest.append(command)
+    if found is None:
+        found = dict(chosen)
+        found["p"] = 0.01
+        found["raw"] = 0.0
+        found["blank_percent"] = True
+    found["led"] = True
+    found["pool"] = "app"
+    try:
+        share = float(found.get("p") or 0)
+    except (TypeError, ValueError):
+        share = 0.0
+    if share <= 0:
+        found["p"] = 0.01
+        found["blank_percent"] = True
+    return [found, *rest]
+
+
 def slice_rows(
     commands: Iterable[dict],
     probabilities: dict,
@@ -1792,9 +1935,13 @@ def slice_rows(
     explore: dict | None = None,
     now: float | None = None,
     stats: dict | None = None,
+    actions: Iterable[str] | None = None,
 ) -> tuple[list[dict], list[dict]]:
-    """Five card rows from the saved pools, plus the list a later visit can rotate."""
-    pool = order_saved(commands, probabilities, names, explore)
+    """Five card rows from the saved pools, plus the list a later visit can rotate.
+
+    `actions` is the recent `just_did` list. The newest effect leads the card.
+    """
+    pool = with_action_lead(order_saved(commands, probabilities, names, explore), commands, actions)
     return suggestion_rows(offer_rows(pool, unused, now=now, stats=stats)), pool
 
 

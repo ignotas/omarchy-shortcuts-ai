@@ -28,6 +28,8 @@ The `apps` question is the shortcuts that match those five names. On the card, e
 
 The `explore` question is every other shortcut. That pool leaves the five names' shortcuts out, and both pools are ranked again when that set changes. `uses`, `hour`, and `ago` stay on every shortcut in both questions. The card leads with the per-app shares. The exploration pool fills the card when fewer than five match, and it sits behind them so a rested app shortcut can reveal one.
 
+The newest desktop action puts the shortcut that would have done the same thing first. Opening wifi puts Network first. Closing a window puts Close window first. Switching to workspace 2 puts Switch to workspace 2 first. Focusing a window does not. That choice stays on this machine and does not start another call. A shortcut with no saved share keeps a blank percent, and it still leads when it had been set aside.
+
 The call is `POST https://api.typesafe.ai/v1/systemone`. The body is JSON in this shape. The names below are an example, so you can see the fields. Your key is only the `Authorization: Bearer` header, taken from the login keyring.
 
 ```json

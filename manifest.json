@@ -5,7 +5,7 @@
   "version": "1.0.0",
   "author": "ignotas",
   "license": "MIT",
-  "description": "Suggests the next Omarchy shortcut when the pointer reaches the bottom-right corner.",
+  "description": "Suggests the next Omarchy shortcut in the bottom-right corner, and leads with the shortcut for the latest mouse action.",
   "kinds": ["service"],
   "keepLoaded": true,
   "entryPoints": {

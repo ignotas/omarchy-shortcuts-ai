@@ -305,7 +305,10 @@ class Corner:
         charged = self._note_spend(body)
         saved = saved_rank(names, request["questions"], body["answers"], time.time())
         confidence = saved.get("confidence")
-        rows, pool = slice_rows(commands, saved["probabilities"], names, unused, saved["explore"], now, stats)
+        rows, pool = slice_rows(
+            commands, saved["probabilities"], names, unused, saved["explore"], now, stats,
+            state.get("just_did"),
+        )
         saved["offered"] = row_chord_ids(rows, commands)
         with self.state_lock:
             self.rank = saved
@@ -339,7 +342,10 @@ class Corner:
         """The saved maps are the only source. This visit does not call Jev."""
         probabilities = rank.get("probabilities") if isinstance(rank.get("probabilities"), dict) else {}
         explore = rank.get("explore") if "explore" in rank and isinstance(rank.get("explore"), dict) else None
-        rows, pool = slice_rows(commands, probabilities, names, unused, explore, now, stats)
+        rows, pool = slice_rows(
+            commands, probabilities, names, unused, explore, now, stats,
+            state.get("just_did"),
+        )
         fingerprint = _rank_fingerprint(names)
         if not rows:
             held = held_card(card, commands, state, stats, fingerprint, now, unused)
