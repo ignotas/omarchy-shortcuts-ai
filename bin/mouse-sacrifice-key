@@ -1,0 +1,56 @@
+#!/bin/bash
+# Store, check, or remove the Jev key. The key is read with echo off and
+# written to the login keyring on stdin. It is not saved in a file.
+set -euo pipefail
+
+tool=/usr/bin/secret-tool
+service=ignotas.mouse-sacrifice
+item=jev
+label='Jev API key'
+
+if [[ ! -x $tool ]]; then
+  echo "secret-tool is not installed." >&2
+  exit 1
+fi
+
+status() {
+  if "$tool" lookup service "$service" key "$item" >/dev/null 2>&1; then
+    echo "Jev key is in the keyring."
+  else
+    echo "No Jev key in the keyring."
+    return 1
+  fi
+}
+
+store() {
+  local token
+  if [[ -t 0 ]]; then
+    read -rs -p "Jev key: " token
+    echo
+  else
+    IFS= read -r token || true
+  fi
+  token=${token//$'\r'/}
+  if [[ -z $token ]]; then
+    echo "The key was empty." >&2
+    return 1
+  fi
+  printf '%s' "$token" | "$tool" store --label="$label" service "$service" key "$item"
+  unset token
+  echo "Stored in the keyring."
+}
+
+clear_key() {
+  "$tool" clear service "$service" key "$item" >/dev/null 2>&1 || true
+  echo "Removed from the keyring."
+}
+
+case "${1:-store}" in
+  store) store ;;
+  status) status ;;
+  clear) clear_key ;;
+  *)
+    echo "Usage: mouse-sacrifice-key [store|status|clear]" >&2
+    exit 1
+    ;;
+esac

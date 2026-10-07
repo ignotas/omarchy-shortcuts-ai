@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "id": "ignotas.mouse-sacrifice",
+  "name": "Mouse sacrifice",
+  "version": "1.0.0",
+  "author": "ignotas",
+  "license": "MIT",
+  "description": "Suggests the next Omarchy shortcut when the pointer reaches the bottom-right corner.",
+  "kinds": ["service"],
+  "keepLoaded": true,
+  "entryPoints": {
+    "service": "Service.qml"
+  }
+}
