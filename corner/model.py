@@ -471,7 +471,7 @@ _LAYER_IGNORE = frozenset({
     "omarchy-bar-drag-ghost",
     "omarchy-bar-move-ghost",
     "omarchy-lock-preview",
-    "ignotas-mouse-sacrifice",
+    "ignotas-shortcuts-ai",
 })
 _LAYER_LABELS = {
     "omarchy-menu": "menu",

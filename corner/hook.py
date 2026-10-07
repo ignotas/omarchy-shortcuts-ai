@@ -27,8 +27,8 @@ def dkey_source(log_path: str, keycode: int) -> str:
         raise ValueError("debug keycode is out of range")
     # `code` is the layout's D key (XKB keycode, evdev + 8).
     return f"""
-if _G.ignotas_mouse_sacrifice_dkey then return "already" end
-_G.ignotas_mouse_sacrifice_dkey = true
+if _G.ignotas_shortcuts_ai_dkey then return "already" end
+_G.ignotas_shortcuts_ai_dkey = true
 local path = "{log_path}"
 local keycode = {code}
 local held = nil
@@ -39,7 +39,7 @@ local function bite()
   last_bite = now
   hl.exec_cmd(string.format("printf '1\\\\n' >> '%s'", path))
 end
-function _G.ignotas_mouse_sacrifice_set_arm(on)
+function _G.ignotas_shortcuts_ai_set_arm(on)
   if on then
     if held then return "same" end
     local specs = {{ "d", "D", "SHIFT + d", "SHIFT + D" }}
@@ -72,8 +72,8 @@ def hook_source(log_path: str) -> str:
     # which printf then reads as a newline. FUNCTION_KEYCODE is shared with
     # the matcher so the hook and the tests cannot drift apart.
     return f"""
-if _G.ignotas_mouse_sacrifice_hook then return "already" end
-_G.ignotas_mouse_sacrifice_hook = true
+if _G.ignotas_shortcuts_ai_hook then return "already" end
+_G.ignotas_shortcuts_ai_hook = true
 local path = "{log_path}"
 local function down(name)
   local ok, value = pcall(hl.is_key_down, name)

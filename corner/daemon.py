@@ -61,8 +61,8 @@ from corner.model import (
 )
 from corner.xkb import Keysyms
 
-CONFIG_DIR = Path.home() / ".config" / "ignotas" / "mouse-sacrifice"
-STATE_DIR = Path.home() / ".local" / "state" / "omarchy" / "mouse-sacrifice"
+CONFIG_DIR = Path.home() / ".config" / "ignotas" / "shortcuts-ai"
+STATE_DIR = Path.home() / ".local" / "state" / "omarchy" / "shortcuts-ai"
 KEY_FILE = CONFIG_DIR / "jev.key"
 
 SHOW_PX = 10
@@ -285,7 +285,7 @@ class Corner:
         if not key:
             return _view(
                 [], fingerprint,
-                error="No Jev key in the keyring. Run mouse-sacrifice-key.",
+                error="No Jev key in the keyring. Run shortcuts-ai-key.",
                 spend=spend_line(self.spend, 0),
             )
         try:
@@ -697,8 +697,8 @@ class Corner:
             # A previous process may have left D bound. This one has not
             # seen the pointer yet, so start disarmed.
             _repl(
-                "if _G.ignotas_mouse_sacrifice_set_arm then "
-                "return _G.ignotas_mouse_sacrifice_set_arm(false) end return 'missing'"
+                "if _G.ignotas_shortcuts_ai_set_arm then "
+                "return _G.ignotas_shortcuts_ai_set_arm(false) end return 'missing'"
             )
             self.armed = False
             self.arm_at = 0.0
@@ -728,8 +728,8 @@ class Corner:
             return
         word = "true" if on else "false"
         text = _repl(
-            "if _G.ignotas_mouse_sacrifice_set_arm then "
-            f"return _G.ignotas_mouse_sacrifice_set_arm({word}) "
+            "if _G.ignotas_shortcuts_ai_set_arm then "
+            f"return _G.ignotas_shortcuts_ai_set_arm({word}) "
             "end return 'missing'"
         )
         if "missing" in text or "failed" in text:
@@ -1237,12 +1237,12 @@ def _repl(code: str) -> str:
 
 def _disarm_lua(clear_hook: bool) -> str:
     """Unbind D before a new script is loaded. Never call hl.unbind("D")."""
-    hook = "_G.ignotas_mouse_sacrifice_hook = nil; " if clear_hook else ""
+    hook = "_G.ignotas_shortcuts_ai_hook = nil; " if clear_hook else ""
     return (
-        "if _G.ignotas_mouse_sacrifice_set_arm then _G.ignotas_mouse_sacrifice_set_arm(false) end; "
+        "if _G.ignotas_shortcuts_ai_set_arm then _G.ignotas_shortcuts_ai_set_arm(false) end; "
         + hook
-        + "_G.ignotas_mouse_sacrifice_dkey = nil; "
-        "_G.ignotas_mouse_sacrifice_set_arm = nil; "
+        + "_G.ignotas_shortcuts_ai_dkey = nil; "
+        "_G.ignotas_shortcuts_ai_set_arm = nil; "
         "return 'cleared'"
     )
 

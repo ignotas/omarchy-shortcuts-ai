@@ -154,7 +154,7 @@ class BarClickTests(unittest.TestCase):
         self.assertEqual(layer_phrase("opened", "omarchy-menu"), "opened menu")
         self.assertEqual(layer_phrase("opened", "omarchy-bar"), "")
         self.assertEqual(layer_phrase("opened", "omarchy-osd"), "")
-        self.assertEqual(layer_phrase("opened", "ignotas-mouse-sacrifice"), "")
+        self.assertEqual(layer_phrase("opened", "ignotas-shortcuts-ai"), "")
         phrase = layer_phrase("opened", "omarchy-keyboard-panel", "omarchy.network")
         self.assertLessEqual(len(phrase), 40)
 
@@ -772,7 +772,7 @@ class UnusedListTests(unittest.TestCase):
         self.assertEqual([row["chord"] for row in kept], ["A", "B"])
 
     def test_unused_file_counts_one_visit_and_a_use_clears_it(self):
-        directory = Path("/tmp/mouse-sacrifice-unused-test")
+        directory = Path("/tmp/shortcuts-ai-unused-test")
         directory.mkdir(exist_ok=True)
         path = directory / "unused.json"
         if path.exists():
@@ -827,10 +827,10 @@ class UnusedListTests(unittest.TestCase):
 
 class HookTests(unittest.TestCase):
     def test_plain_typing_is_not_recorded(self):
-        source = hook_source("/home/ignotas/.local/state/omarchy/mouse-sacrifice/chords.log")
+        source = hook_source("/home/ignotas/.local/state/omarchy/shortcuts-ai/chords.log")
         self.assertIn(f"mods < 4 and code < {FUNCTION_KEYCODE}", source)
         self.assertIn("how ~= 1", source)
-        self.assertIn("ignotas_mouse_sacrifice_hook", source)
+        self.assertIn("ignotas_shortcuts_ai_hook", source)
         self.assertNotIn("apikey_", source)
         # Lua string.format must see %% and \\n, so the shell printf keeps them.
         self.assertIn("printf '%%d %%d %%d\\\\n'", source)
@@ -842,7 +842,7 @@ class HookTests(unittest.TestCase):
             hook_source("/tmp/bad'path")
 
     def test_d_is_swallowed_only_while_the_corner_is_armed(self):
-        source = dkey_source("/home/ignotas/.local/state/omarchy/mouse-sacrifice/dkey.log", 40)
+        source = dkey_source("/home/ignotas/.local/state/omarchy/shortcuts-ai/dkey.log", 40)
         self.assertIn('pcall(hl.bind, spec, bite', source)
         self.assertIn('"d"', source)
         self.assertIn('"D"', source)
@@ -852,7 +852,7 @@ class HookTests(unittest.TestCase):
         self.assertNotIn("CTRL", source)
         self.assertNotIn("ALT", source)
         self.assertNotIn("SUPER", source)
-        self.assertIn("ignotas_mouse_sacrifice_set_arm", source)
+        self.assertIn("ignotas_shortcuts_ai_set_arm", source)
         self.assertIn('return "bound"', source)
         self.assertIn('return "unbound"', source)
         self.assertIn('return "same"', source)
@@ -1279,7 +1279,7 @@ class FullRankTests(unittest.TestCase):
 
 class SecretTests(unittest.TestCase):
     def setUp(self):
-        self.directory = Path("/tmp/mouse-sacrifice-secret-test")
+        self.directory = Path("/tmp/shortcuts-ai-secret-test")
         if self.directory.exists():
             for child in self.directory.iterdir():
                 child.unlink()

@@ -10,7 +10,7 @@ import subprocess
 from pathlib import Path
 
 SECRET_TOOL = "/usr/bin/secret-tool"
-SERVICE = "ignotas.mouse-sacrifice"
+SERVICE = "ignotas.shortcuts-ai"
 ITEM = "jev"
 LABEL = "Jev API key"
 

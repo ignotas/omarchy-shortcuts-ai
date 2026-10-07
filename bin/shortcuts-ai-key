@@ -4,7 +4,7 @@
 set -euo pipefail
 
 tool=/usr/bin/secret-tool
-service=ignotas.mouse-sacrifice
+service=ignotas.shortcuts-ai
 item=jev
 label='Jev API key'
 
@@ -50,7 +50,7 @@ case "${1:-store}" in
   status) status ;;
   clear) clear_key ;;
   *)
-    echo "Usage: mouse-sacrifice-key [store|status|clear]" >&2
+    echo "Usage: shortcuts-ai-key [store|status|clear]" >&2
     exit 1
     ;;
 esac

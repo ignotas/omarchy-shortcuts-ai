@@ -1,16 +1,16 @@
-# omarchy-mouse-sacrifice
+# Shortcuts AI
 
 Bottom-right corner assistant for [Omarchy](https://omarchy.org/). Move the pointer into the corner and it offers up to five commands that fit what is on screen.
 
 The card in this screenshot opens in the bottom-right corner.
 
-![Mouse sacrifice card in the bottom-right corner](preview.png)
+![Shortcuts AI card in the bottom-right corner](preview.png)
 
-The plugin id is `ignotas.mouse-sacrifice`. License: MIT. It needs the `secret-tool` that ships with Omarchy, and your own Jev key.
+The plugin id is `ignotas.shortcuts-ai`. License: MIT. It needs the `secret-tool` that ships with Omarchy, and your own Jev key.
 
 ## What it sends
 
-The plugin keeps its working notes on this machine, under `~/.local/state/omarchy/mouse-sacrifice/`. That directory holds the press log, the last card, the unused-suggestion counts, and the spend tally. The plugin needs those files to work. It never shares them, and it never will. They stay on this machine.
+The plugin keeps its working notes on this machine, under `~/.local/state/omarchy/shortcuts-ai/`. That directory holds the press log, the last card, the unused-suggestion counts, and the spend tally. The plugin needs those files to work. It never shares them, and it never will. They stay on this machine.
 
 Jev (TypeSafe) only ranks a list. The plugin builds the list in code:
 
@@ -38,7 +38,7 @@ The call is `POST https://api.typesafe.ai/v1/systemone`. The body is JSON in thi
   "state": {
     "focused": {
       "app": "Alacritty",
-      "title": "mouse-sacrifice",
+      "title": "shortcuts-ai",
       "floating": false,
       "fullscreen": false
     },
@@ -82,19 +82,19 @@ The call is `POST https://api.typesafe.ai/v1/systemone`. The body is JSON in thi
 
 `hour` and `ago` are left out until the shortcut has been used. `web` is there only when the shortcut opens a site, and then it is the host alone. A shortcut with no presses is just `chord`, `does`, and `uses`.
 
-Those five names, the recent actions, the last card, and both probability maps are kept in `~/.local/state/omarchy/mouse-sacrifice/history.json`. After a reboot the ranking comes back. The same five names are not sent to Jev again unless one of the five suggested shortcuts has been pressed twice since that ranking. A ranking saved before the exploration pool existed is sent once, so that pool can be stored.
+Those five names, the recent actions, the last card, and both probability maps are kept in `~/.local/state/omarchy/shortcuts-ai/history.json`. After a reboot the ranking comes back. The same five names are not sent to Jev again unless one of the five suggested shortcuts has been pressed twice since that ranking. A ranking saved before the exploration pool existed is sent once, so that pool can be stored.
 
 ## Cost
 
-Jev charges input tokens only, at $0.042 per million. Output is free. Each reply's `usage.input_tokens` is added to `~/.local/state/omarchy/mouse-sacrifice/jev.json`. A cached open does not add a call.
+Jev charges input tokens only, at $0.042 per million. Output is free. Each reply's `usage.input_tokens` is added to `~/.local/state/omarchy/shortcuts-ai/jev.json`. A cached open does not add a call.
 
-The cost stays off the card until debug is on. Put the pointer in the corner and press D. That D is swallowed, and a small Pac-Man eats it. The same corner keeps the card open, so D is still swallowed while the pointer is on the card. The card closes in the same moment the pointer leaves it. D types normally again once it is gone. Press D there again to hide the cost. The choice is remembered in `~/.local/state/omarchy/mouse-sacrifice/debug`.
+The cost stays off the card until debug is on. Put the pointer in the corner and press D. That D is swallowed, and a small Pac-Man eats it. The same corner keeps the card open, so D is still swallowed while the pointer is on the card. The card closes in the same moment the pointer leaves it. D types normally again once it is gone. Press D there again to hide the cost. The choice is remembered in `~/.local/state/omarchy/shortcuts-ai/debug`.
 
 While debug is on, the card grows to the left and shows the last request built for Jev. On a Mac, that side also names the keys: ⌘ Command is Super, and ⌥ Option is Alt.
 
 ## Learning
 
-Presses are counted per shortcut in `~/.local/state/omarchy/mouse-sacrifice/usage.jsonl` and are kept. The full call tells Jev how many times each shortcut was used, how many of those presses were in the last hour, and how long ago the last one was. A shortcut you used and then left alone can lead again. Shortcuts you use a lot right now leave room for ones you have not used. Those counts are sent to Jev when the five names change, and when one of the five suggested shortcuts is pressed twice after the last ranking. The card also applies them on its own: each press in the last hour takes a fifth of that shortcut's chance, and five presses set it aside until those presses leave the hour. A press still clears the ignored-display count, and the recent presses keep the shortcut down. If Jev does not answer, the previous ranking stays on the card. If there is no ranking yet, the card shows shortcuts you have not used.
+Presses are counted per shortcut in `~/.local/state/omarchy/shortcuts-ai/usage.jsonl` and are kept. The full call tells Jev how many times each shortcut was used, how many of those presses were in the last hour, and how long ago the last one was. A shortcut you used and then left alone can lead again. Shortcuts you use a lot right now leave room for ones you have not used. Those counts are sent to Jev when the five names change, and when one of the five suggested shortcuts is pressed twice after the last ranking. The card also applies them on its own: each press in the last hour takes a fifth of that shortcut's chance, and five presses set it aside until those presses leave the hour. A press still clears the ignored-display count, and the recent presses keep the shortcut down. If Jev does not answer, the previous ranking stays on the card. If there is no ranking yet, the card shows shortcuts you have not used.
 
 Each time a shortcut is on the card and you do not use it, it loses a fifth of its chance. After five times it is fully aside, on the unused list in `unused.json`. That loss fades over a day from the last ignored display, so the shortcut can come back. Using it once clears that ignored-display count. Presses from the last hour are separate, and they stay until the hour passes. The list stays on this machine. It is not sent to Jev, and a repeated screen still reuses the cached answer.
 
@@ -107,19 +107,19 @@ Jev needs your own key. It is stored in the login keyring, the same way other Om
 That key is not under the plugin's control. You create it, review it, and revoke it on the TypeSafe side. The plugin cannot do that for you. It only reads the copy you chose to store in the login keyring. Revoke the key at TypeSafe and the ranking call stops.
 
 ```bash
-~/.config/omarchy/plugins/ignotas.mouse-sacrifice/bin/mouse-sacrifice-key
-~/.config/omarchy/plugins/ignotas.mouse-sacrifice/bin/mouse-sacrifice-key status
-~/.config/omarchy/plugins/ignotas.mouse-sacrifice/bin/mouse-sacrifice-key clear
+~/.config/omarchy/plugins/ignotas.shortcuts-ai/bin/shortcuts-ai-key
+~/.config/omarchy/plugins/ignotas.shortcuts-ai/bin/shortcuts-ai-key status
+~/.config/omarchy/plugins/ignotas.shortcuts-ai/bin/shortcuts-ai-key clear
 ```
 
-`status` says whether a key is stored and does not print it. Removing the plugin does not remove the keyring item. Clear it with the command above, or with `secret-tool clear service ignotas.mouse-sacrifice key jev`.
+`status` says whether a key is stored and does not print it. Removing the plugin does not remove the keyring item. Clear it with the command above, or with `secret-tool clear service ignotas.shortcuts-ai key jev`.
 
 Calls go to `POST https://api.typesafe.ai/v1/systemone` with model `jev-latest`.
 
 ## Install
 
 ```bash
-omarchy plugin add https://github.com/ignotas/omarchy-mouse-sacrifice.git --enable
+omarchy plugin add https://github.com/ignotas/omarchy-shortcuts-ai.git --enable
 ```
 
 The shell loads `Service.qml` as a `keepLoaded` service. Click a row to run that shortcut. Move the pointer away to close the card.
@@ -129,7 +129,7 @@ The corner itself does not take clicks. Only the open card does.
 ## Remove
 
 ```bash
-omarchy plugin remove ignotas.mouse-sacrifice
+omarchy plugin remove ignotas.shortcuts-ai
 ```
 
-That removes the plugin files. It leaves the keyring item and `~/.local/state/omarchy/mouse-sacrifice`. Clear the key with `mouse-sacrifice-key clear` if you want that gone too.
+That removes the plugin files. It leaves the keyring item and `~/.local/state/omarchy/shortcuts-ai`. Clear the key with `shortcuts-ai-key clear` if you want that gone too.

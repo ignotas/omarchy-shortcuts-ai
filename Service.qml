@@ -28,7 +28,7 @@ Item {
   property int cardHeight: 0
   property bool cardHeld: false
 
-  readonly property string daemonPath: Qt.resolvedUrl("bin/mouse-sacrifice").toString().replace(/^file:\/\//, "")
+  readonly property string daemonPath: Qt.resolvedUrl("bin/shortcuts-ai").toString().replace(/^file:\/\//, "")
 
   function apply(message) {
     // Hide always closes. The daemon advances the session in the same step,
@@ -121,7 +121,7 @@ Item {
     }
     stderr: SplitParser {
       onRead: function(line) {
-        console.warn("ignotas.mouse-sacrifice: " + line)
+        console.warn("ignotas.shortcuts-ai: " + line)
       }
     }
     onExited: restart.restart()
@@ -158,7 +158,7 @@ Item {
       visible: (root.open || root.chomping) && (root.monitorName === "" || modelData.name === root.monitorName || !modelData.name)
       color: "transparent"
       exclusionMode: ExclusionMode.Ignore
-      WlrLayershell.namespace: "ignotas-mouse-sacrifice"
+      WlrLayershell.namespace: "ignotas-shortcuts-ai"
       WlrLayershell.layer: WlrLayer.Overlay
       WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
       anchors { top: true; bottom: true; left: true; right: true }
