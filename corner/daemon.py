@@ -7,9 +7,11 @@ is still approaching, and the card is shown only in the last few pixels.
 
 from __future__ import annotations
 
+import ctypes
 import hashlib
 import json
 import os
+import select
 import socket
 import subprocess
 import sys
@@ -69,6 +71,9 @@ SHOW_PX = 10
 APPROACH_PX = 80
 KEEP_W = 500
 KEEP_H = 320
+# After a jump the card stays up this long so the pointer does not close it.
+# The corner file is written when the card disappears, not while it is still up.
+PLACE_SAVE_SECONDS = 5
 # Debug draws the last Jev input to the left of the card. The keep zone
 # has to cover that wider card or the pointer loop closes it.
 DEBUG_KEEP_W = 1280
@@ -85,6 +90,7 @@ class Corner:
     def __init__(self) -> None:
         self.out_lock = threading.Lock()
         self.state_lock = threading.Lock()
+        self.arrow_lock = threading.Lock()
         self.usage: list[dict] = []
         self.recent: deque[str] = deque(maxlen=RECENT_EVENTS)
         self.apps: list[str] = []
@@ -131,10 +137,19 @@ class Corner:
         self.debug = _read_flag(self.debug_path)
         self.dkey_path = STATE_DIR / "dkey.log"
         self.dkey_hook_path = STATE_DIR / "dkey.lua"
+        self.arrow_path = STATE_DIR / "arrows.log"
+        self.place_path = STATE_DIR / "corner"
+        self.place = _read_place(self.place_path)
+        self.place_pending = ""
+        self.place_due = 0.0
         try:
             self.dkey_offset = self.dkey_path.stat().st_size
         except OSError:
             self.dkey_offset = 0
+        try:
+            self.arrow_offset = self.arrow_path.stat().st_size
+        except OSError:
+            self.arrow_offset = 0
         self.chord_path = STATE_DIR / "chords.log"
         self.offset_path = STATE_DIR / "chords.offset"
         self.hook_path = STATE_DIR / "hook.lua"
@@ -147,6 +162,7 @@ class Corner:
         threading.Thread(target=self._chords, name="corner-chords", daemon=True).start()
         threading.Thread(target=self._events, name="corner-events", daemon=True).start()
         threading.Thread(target=self._pointer, name="corner-pointer", daemon=True).start()
+        threading.Thread(target=self._arrows, name="corner-arrows", daemon=True).start()
         threading.Thread(target=self._hook_loop, name="corner-hook", daemon=True).start()
         for line in sys.stdin:
             line = line.strip()
@@ -164,6 +180,7 @@ class Corner:
             elif op == "suggest":
                 self.kick_suggest()
             elif op == "away":
+                # The card has left the screen. Save whatever corner it jumped to.
                 self._hide_now()
             elif op == "debug":
                 self.toggle_from_card()
@@ -185,6 +202,14 @@ class Corner:
             if ids:
                 self.unused = note_unused(self.unused, ids, used, time.time())
                 _write_json(self.unused_path, self.unused)
+            # The quiet window belongs to the open card. Closing it is done moving.
+            pending = getattr(self, "place_pending", "")
+            place = format_place(self.place) if pending else ""
+            self.place_pending = ""
+        if place and getattr(self, "place_path", None) is not None:
+            fx, fy = normalize_place(place)
+            if _write_text(self.place_path, place + "\n"):
+                self.emit({"op": "place", "x": fx, "y": fy, "moving": False})
         self.emit({"op": "hide", "session": session})
 
     def emit(self, payload: dict) -> None:
@@ -205,6 +230,8 @@ class Corner:
         text = _repl(script)
         if text.strip() == "ok":
             self._mark_clicked(arg)
+            # The card closes on a successful run. The move ends with it.
+            self._hide_now()
             return {"op": "ran", "ok": True, "note": ""}
         return {"op": "ran", "ok": False, "note": "That shortcut changed. Come back to the corner."}
 
@@ -428,6 +455,8 @@ class Corner:
         show_samples = 0
         while True:
             time.sleep(POLL_SECONDS)
+            self._take_arrows()
+            self._store_place_if_due()
             try:
                 point = _cursor()
                 monitors = self._monitors()
@@ -440,7 +469,15 @@ class Corner:
                 phase = self.phase
                 shown_on = self.monitor
                 keep_w = DEBUG_KEEP_W if self.debug else KEEP_W
-            zone, monitor = _zone(point[0], point[1], monitors, phase, shown_on, keep_w)
+                place = self.place
+                ignore_cursor = self._moving_locked()
+            if ignore_cursor:
+                # The card is up, so the pointer must not close it mid-jump.
+                # Once the card is gone this is false and the arrows are released.
+                self._set_arm(True)
+                self._take_dkey()
+                continue
+            zone, monitor = _zone(point[0], point[1], monitors, phase, shown_on, keep_w, place)
             with self.state_lock:
                 if zone == "keep" and self.phase != "shown":
                     zone = "away"
@@ -687,7 +724,10 @@ class Corner:
             code = self._d_code()
             if code is None:
                 return
-            self.dkey_hook_path.write_text(dkey_source(str(self.dkey_path), code), encoding="utf-8")
+            self.dkey_hook_path.write_text(
+                dkey_source(str(self.dkey_path), code, str(self.arrow_path)),
+                encoding="utf-8",
+            )
             # Drop the old swallow first. "already" would keep the previous binds.
             _repl(_disarm_lua(clear_hook=False))
             dtext = _repl(f'dofile("{self.dkey_hook_path}")')
@@ -762,6 +802,111 @@ class Corner:
             except OSError:
                 return
 
+    def _arrows(self) -> None:
+        """Jump as soon as a key appends a line. The pointer poll can sit
+        inside a cursor read for a third of a second, and the card must not wait."""
+        watch = _AppendWatch(self.arrow_path)
+        try:
+            while True:
+                self._take_arrows()
+                watch.wait(0.2)
+        finally:
+            watch.close()
+
+    def _take_arrows(self) -> None:
+        with self.arrow_lock:
+            try:
+                size = self.arrow_path.stat().st_size
+            except OSError:
+                return
+            if size < self.arrow_offset:
+                self.arrow_offset = 0
+            if size == self.arrow_offset:
+                return
+            with self.arrow_path.open("rb") as handle:
+                handle.seek(self.arrow_offset)
+                data = handle.read()
+            self.arrow_offset += len(data)
+            if self.arrow_offset >= size and self.arrow_offset > 4096:
+                try:
+                    self.arrow_path.write_bytes(b"")
+                    self.arrow_offset = 0
+                except OSError:
+                    pass
+        for line in data.decode("utf-8", "replace").splitlines():
+            self._on_arrow(line.strip())
+
+    def _walk_span(self) -> tuple[float, float]:
+        """Logical width and height of the monitor the card is on."""
+        monitors = getattr(self, "monitors", None) or []
+        wanted = str(getattr(self, "monitor", "") or "")
+        chosen = None
+        for monitor in monitors:
+            if not wanted or str(monitor.get("name") or "") == wanted:
+                chosen = monitor
+                break
+        if chosen is None and monitors:
+            chosen = monitors[0]
+        if chosen is not None:
+            box = _layout_box(chosen)
+            if box is not None and box[2] > 0 and box[3] > 0:
+                return box[2], box[3]
+        return 1280.0, 800.0
+
+    def _on_arrow(self, direction: str) -> None:
+        width, height = self._walk_span()
+        with self.state_lock:
+            if self.phase != "shown":
+                return
+            moved = walk_place(self.place, direction, width, height)
+            if moved is None:
+                return
+            self.place = moved
+            self.place_pending = format_place(moved)
+            self.place_due = time.time() + PLACE_SAVE_SECONDS
+            session = self.session
+            monitor = self.monitor
+        fx, fy = moved
+        self.emit({
+            "op": "place",
+            "x": fx,
+            "y": fy,
+            "moving": True,
+            "session": session,
+            "monitor": monitor,
+        })
+
+    def _moving_locked(self) -> bool:
+        # Quiet time holds the card only while that card is on screen.
+        return getattr(self, "phase", "") == "shown" and bool(self.place_pending) and time.time() < self.place_due
+
+    def _moving(self) -> bool:
+        with self.state_lock:
+            return self._moving_locked()
+
+    def _store_place_if_due(self) -> None:
+        """The quiet wait only lets the card close. The file is written on that close."""
+        now = time.time()
+        with self.state_lock:
+            if getattr(self, "phase", "") != "shown":
+                return
+            pending = getattr(self, "place_pending", "")
+            due = getattr(self, "place_due", 0.0)
+            if not pending or due == 0 or now < due:
+                return
+            self.place_due = 0.0
+            fx, fy = normalize_place(self.place)
+            session = self.session
+            monitor = self.monitor
+        self.emit({
+            "op": "place",
+            "x": fx,
+            "y": fy,
+            "moving": False,
+            "session": session,
+            "monitor": monitor,
+        })
+
     def _on_corner_d(self) -> None:
         with self.state_lock:
             monitor = self.monitor
@@ -821,6 +966,10 @@ class Corner:
         with self.state_lock:
             payload["input"] = self.last_input if self.debug else ""
             payload["mac"] = self.mac_keys
+            fx, fy = normalize_place(getattr(self, "place", (1.0, 1.0)))
+            payload["x"] = fx
+            payload["y"] = fy
+            payload["moving"] = self._moving_locked()
         self.emit(payload)
 
     def _note_spend(self, body: dict) -> int:
@@ -1128,6 +1277,91 @@ def _arms_d(zone: str) -> bool:
     return zone in {"show", "keep"}
 
 
+def _corner_axis(value: float) -> float:
+    """0 or 1. Anything in between snaps to the nearer screen edge."""
+    return 1.0 if float(value) >= 0.5 else 0.0
+
+
+def normalize_place(text) -> tuple[float, float]:
+    """One of the four corners. 1, 1 is the bottom-right. Never the middle."""
+    if isinstance(text, tuple) and len(text) == 2:
+        try:
+            return _corner_axis(text[0]), _corner_axis(text[1])
+        except (TypeError, ValueError):
+            return 1.0, 1.0
+    raw = " ".join(str(text or "").casefold().split())
+    named = {
+        "bottom-right": (1.0, 1.0),
+        "bottom-left": (0.0, 1.0),
+        "top-right": (1.0, 0.0),
+        "top-left": (0.0, 0.0),
+    }
+    if raw in named:
+        return named[raw]
+    parts = raw.split()
+    if len(parts) == 2:
+        try:
+            return _corner_axis(float(parts[0])), _corner_axis(float(parts[1]))
+        except ValueError:
+            pass
+    return 1.0, 1.0
+
+
+def format_place(place) -> str:
+    fx, fy = normalize_place(place)
+    vertical = "bottom" if fy == 1.0 else "top"
+    horizontal = "right" if fx == 1.0 else "left"
+    return f"{vertical}-{horizontal}"
+
+
+def walk_place(
+    place,
+    direction: str,
+    width: float = 1280,
+    height: float = 800,
+    step: float = 0,
+) -> tuple[float, float] | None:
+    """The next corner in that direction, or None when already on that edge."""
+    del width, height, step
+    fx, fy = normalize_place(place)
+    arrow = str(direction or "").casefold()
+    if arrow == "left":
+        moved = (0.0, fy)
+    elif arrow == "right":
+        moved = (1.0, fy)
+    elif arrow == "up":
+        moved = (fx, 0.0)
+    elif arrow == "down":
+        moved = (fx, 1.0)
+    else:
+        return None
+    if moved == (fx, fy):
+        return None
+    return moved
+
+
+def place_ready(
+    pending: str | None,
+    saved: str,
+    now: float,
+    at: float,
+    wait: float = PLACE_SAVE_SECONDS,
+) -> str | None:
+    """The corner to write, once the arrows have been still for `wait` seconds."""
+    if not pending or pending == saved:
+        return None
+    if now < at + wait:
+        return None
+    return pending
+
+
+def _read_place(path: Path) -> str:
+    try:
+        return normalize_place(path.read_text(encoding="utf-8"))
+    except OSError:
+        return "bottom-right"
+
+
 def _zone(
     x: float,
     y: float,
@@ -1135,7 +1369,9 @@ def _zone(
     phase: str,
     shown_on: str,
     keep_w: float = KEEP_W,
+    place="bottom-right",
 ) -> tuple[str, str]:
+    fx, fy = normalize_place(place)
     for monitor in monitors:
         box = _layout_box(monitor)
         if box is None:
@@ -1144,14 +1380,19 @@ def _zone(
         if not (left <= x < left + width and top <= y < top + height):
             continue
         name = str(monitor.get("name") or "")
-        dx = left + width - x
-        dy = top + height - y
+        hx = left + fx * width
+        hy = top + fy * height
+        dx = abs(x - hx)
+        dy = abs(y - hy)
         if dx <= SHOW_PX and dy <= SHOW_PX:
             return "show", name
         if dx <= APPROACH_PX and dy <= APPROACH_PX:
             return "approach", name
-        if phase == "shown" and name == shown_on and dx <= keep_w and dy <= KEEP_H:
-            return "keep", name
+        if phase == "shown" and name == shown_on:
+            keep_left = hx - fx * keep_w
+            keep_top = hy - fy * KEEP_H
+            if keep_left <= x < keep_left + keep_w and keep_top <= y < keep_top + KEEP_H:
+                return "keep", name
         return "away", name
     return "away", ""
 
@@ -1166,6 +1407,63 @@ def _layout_box(monitor: dict) -> tuple[float, float, float, float] | None:
         return float(monitor["x"]), float(monitor["y"]), width, height
     except (KeyError, TypeError, ValueError):
         return None
+
+
+_IN_NONBLOCK = 0x800
+_IN_CLOEXEC = 0x80000
+_IN_MODIFY = 0x2
+_IN_CLOSE_WRITE = 0x8
+
+
+class _AppendWatch:
+    """Block until a file is appended. A missing inotify sleeps a frame instead."""
+
+    def __init__(self, path: Path) -> None:
+        self._fd = -1
+        self._poll: select.poll | None = None
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.touch()
+            lib = ctypes.CDLL(None, use_errno=True)
+            lib.inotify_init1.argtypes = [ctypes.c_int]
+            lib.inotify_init1.restype = ctypes.c_int
+            lib.inotify_add_watch.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_uint32]
+            lib.inotify_add_watch.restype = ctypes.c_int
+            fd = lib.inotify_init1(_IN_NONBLOCK | _IN_CLOEXEC)
+            if fd < 0:
+                return
+            self._fd = fd
+            mask = _IN_MODIFY | _IN_CLOSE_WRITE
+            if lib.inotify_add_watch(fd, os.fsencode(path), mask) < 0:
+                self.close()
+                return
+            poll = select.poll()
+            poll.register(fd, select.POLLIN)
+            self._poll = poll
+        except (OSError, AttributeError):
+            self.close()
+
+    def wait(self, seconds: float) -> None:
+        poll = self._poll
+        if poll is None or self._fd < 0:
+            time.sleep(0.01)
+            return
+        if not poll.poll(max(0, int(seconds * 1000))):
+            return
+        try:
+            while True:
+                chunk = os.read(self._fd, 65536)
+                if len(chunk) < 65536:
+                    break
+        except (BlockingIOError, OSError):
+            return
+
+    def close(self) -> None:
+        fd = self._fd
+        self._fd = -1
+        self._poll = None
+        if fd >= 0:
+            os.close(fd)
 
 
 def _cursor() -> tuple[float, float] | None:

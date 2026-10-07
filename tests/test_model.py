@@ -4,6 +4,7 @@ import json
 import re
 import tempfile
 import threading
+import time
 import unittest
 from collections import deque
 from pathlib import Path
@@ -11,9 +12,15 @@ from unittest.mock import patch
 
 from corner.daemon import (
     DEBUG_KEEP_W,
+    PLACE_SAVE_SECONDS,
     Corner,
+    _AppendWatch,
     _arms_d,
     _fingerprint,
+    format_place,
+    normalize_place,
+    place_ready,
+    walk_place,
     _layout_box,
     _zone,
     card_payload,
@@ -862,6 +869,25 @@ class HookTests(unittest.TestCase):
         self.assertNotIn("input.keyboard.key", source)
         self.assertNotIn("chords.log", source)
         self.assertIn("printf '1\\\\n'", source)
+        arrows = dkey_source(
+            "/home/ignotas/.local/state/omarchy/shortcuts-ai/dkey.log",
+            40,
+            "/home/ignotas/.local/state/omarchy/shortcuts-ai/arrows.log",
+        )
+        for name in ("left", "right", "up", "down"):
+            self.assertIn(f'"{name}"', arrows)
+        self.assertIn("Move corner", arrows)
+        arrow_fn = arrows.split("local function arrow", 1)[1].split("local function bind_arrow", 1)[0]
+        self.assertIn('io.open(arrows, "a")', arrow_fn)
+        self.assertIn('file:write(name, "\\n")', arrow_fn)
+        self.assertIn("file:flush()", arrow_fn)
+        self.assertNotIn("exec_cmd", arrow_fn)
+        self.assertNotIn("os.clock", arrow_fn)
+        self.assertNotIn("repeating", arrows)
+        self.assertNotIn("repeating", source)
+        self.assertNotIn("CTRL", arrows)
+        with self.assertRaises(ValueError):
+            dkey_source("/tmp/ok", 40, "/tmp/bad'path")
         with self.assertRaises(ValueError):
             dkey_source("/tmp/bad'path", 40)
         with self.assertRaises(ValueError):
@@ -886,6 +912,142 @@ class ZoneTests(unittest.TestCase):
         self.assertTrue(_arms_d("keep"))
         self.assertFalse(_arms_d("approach"))
         self.assertFalse(_arms_d("away"))
+        self.assertEqual(_zone(5, 5, [monitor], "away", "", place="top-left")[0], "show")
+        self.assertEqual(_zone(1275, 795, [monitor], "away", "", place="top-left")[0], "away")
+        self.assertEqual(_zone(5, 795, [monitor], "away", "", place="bottom-left")[0], "show")
+        self.assertEqual(_zone(640, 400, [monitor], "away", "", place="bottom-left")[0], "away")
+        self.assertEqual(normalize_place("bottom-right"), (1.0, 1.0))
+        self.assertEqual(normalize_place("0.2000 0.9000"), (0.0, 1.0))
+        self.assertEqual(walk_place("bottom-right", "left"), (0.0, 1.0))
+        self.assertEqual(walk_place("bottom-left", "up"), (0.0, 0.0))
+        self.assertEqual(walk_place("bottom-left", "right"), (1.0, 1.0))
+        self.assertEqual(walk_place("top-left", "right"), (1.0, 0.0))
+        self.assertEqual(walk_place("top-right", "down"), (1.0, 1.0))
+        self.assertIsNone(walk_place("bottom-left", "left"))
+        self.assertIsNone(walk_place("bottom-left", "down"))
+        self.assertEqual(format_place("bottom-left"), "bottom-left")
+        self.assertIsNone(place_ready("bottom-left", "", 1.5, 0))
+        self.assertEqual(place_ready("bottom-left", "", PLACE_SAVE_SECONDS, 0), "bottom-left")
+        self.assertIsNone(place_ready("bottom-left", "bottom-left", PLACE_SAVE_SECONDS, 0))
+
+    def test_an_arrow_jumps_to_the_next_corner_and_that_corner_is_saved(self):
+        corner = object.__new__(Corner)
+        corner.state_lock = threading.Lock()
+        corner.phase = "shown"
+        corner.place = (1.0, 1.0)
+        corner.place_pending = ""
+        corner.place_due = 0.0
+        corner.session = 3
+        corner.monitor = "eDP-1"
+        corner.monitors = []
+        sent = []
+        corner.emit = lambda payload: sent.append(dict(payload))
+        corner._on_arrow("left")
+        self.assertEqual(corner.place, (0.0, 1.0))
+        self.assertEqual(sent[0]["x"], 0.0)
+        self.assertEqual(sent[0]["y"], 1.0)
+        self.assertTrue(sent[0]["moving"])
+        due = corner.place_due
+        # Already on the left edge. Another left must not push the timer out.
+        corner._on_arrow("left")
+        self.assertEqual(corner.place, (0.0, 1.0))
+        self.assertEqual(corner.place_due, due)
+        corner._on_arrow("up")
+        self.assertEqual(corner.place, (0.0, 0.0))
+        self.assertGreater(corner.place_due, due)
+        corner._on_arrow("right")
+        self.assertEqual(corner.place, (1.0, 0.0))
+        with tempfile.TemporaryDirectory() as tmp:
+            corner.place_path = Path(tmp) / "corner"
+            corner._store_place_if_due()
+            self.assertFalse(corner.place_path.exists())
+            corner.place_due = time.time() - 1
+            corner._store_place_if_due()
+            # Still on screen. The file waits until the card disappears.
+            self.assertFalse(corner.place_path.exists())
+            self.assertEqual(corner.place_pending, "top-right")
+            self.assertFalse(sent[-1]["moving"])
+            corner._store_place_if_due()
+            self.assertFalse(sent[-1]["moving"])
+            corner.session = 4
+            corner._display_ids = []
+            corner._used_now = set()
+            corner.unused = {}
+            corner.unused_path = Path(tmp) / "unused.json"
+            corner._hide_now()
+            self.assertEqual(corner.place_path.read_text(encoding="utf-8").strip(), "top-right")
+        self.assertFalse(corner._moving())
+        self.assertEqual(corner.place_pending, "")
+        # The quiet window stops when the card is gone, and the corner is saved then.
+        corner.phase = "away"
+        corner.place_pending = "bottom-left"
+        corner.place = (0.0, 1.0)
+        corner.place_due = time.time() + 30
+        self.assertFalse(corner._moving())
+        corner._on_arrow("up")
+        self.assertEqual(corner.place, (0.0, 1.0))
+        with tempfile.TemporaryDirectory() as tmp:
+            corner.place_path = Path(tmp) / "corner"
+            corner._store_place_if_due()
+            self.assertFalse(corner.place_path.exists())
+            corner.phase = "shown"
+            corner.session = 4
+            corner._display_ids = []
+            corner._used_now = set()
+            corner.unused = {}
+            corner.unused_path = Path(tmp) / "unused.json"
+            before = len(sent)
+            corner._hide_now()
+            self.assertEqual(corner.place_path.read_text(encoding="utf-8").strip(), "bottom-left")
+            self.assertEqual(corner.phase, "away")
+            self.assertEqual(corner.place_pending, "")
+            self.assertEqual(sent[before]["moving"], False)
+            self.assertEqual(sent[before + 1]["op"], "hide")
+
+    def test_an_appended_line_wakes_the_jump_without_the_pointer_poll(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "arrows.log"
+            watch = _AppendWatch(path)
+            self.addCleanup(watch.close)
+            written = threading.Event()
+
+            def poke() -> None:
+                time.sleep(0.05)
+                with path.open("a", encoding="utf-8") as handle:
+                    handle.write("left\n")
+                    handle.flush()
+                written.set()
+
+            threading.Thread(target=poke, daemon=True).start()
+            started = time.perf_counter()
+            watch.wait(0.5)
+            elapsed = time.perf_counter() - started
+        self.assertTrue(written.is_set())
+        self.assertLess(elapsed, 0.2)
+
+    def test_each_arrow_line_jumps_once_as_soon_as_it_is_read(self):
+        corner = object.__new__(Corner)
+        corner.state_lock = threading.Lock()
+        corner.arrow_lock = threading.Lock()
+        corner.phase = "shown"
+        corner.place = (1.0, 1.0)
+        corner.place_pending = ""
+        corner.place_due = 0.0
+        corner.session = 1
+        corner.monitor = "eDP-1"
+        corner.monitors = []
+        sent = []
+        corner.emit = lambda payload: sent.append(dict(payload))
+        with tempfile.TemporaryDirectory() as tmp:
+            corner.arrow_path = Path(tmp) / "arrows.log"
+            corner.arrow_path.write_text("left\nup\n", encoding="utf-8")
+            corner.arrow_offset = 0
+            corner._take_arrows()
+            corner._take_arrows()
+        self.assertEqual([item["x"] for item in sent], [0.0, 0.0])
+        self.assertEqual([item["y"] for item in sent], [1.0, 0.0])
+        self.assertEqual(corner.place, (0.0, 0.0))
+        self.assertTrue(all(item["moving"] for item in sent))
 
 
 class SpendTests(unittest.TestCase):
@@ -924,12 +1086,18 @@ class SpendTests(unittest.TestCase):
         corner.debug = True
         corner.last_input = '{\n  "model": "jev-latest"\n}'
         corner.mac_keys = True
+        corner.place = "bottom-right"
+        corner.place_pending = ""
+        corner.place_due = 0.0
         sent = []
         corner.emit = lambda payload: sent.append(payload)
         corner._emit_card({"op": "update"})
         self.assertIn("jev-latest", sent[0]["input"])
         self.assertNotIn("apikey_", sent[0]["input"])
         self.assertTrue(sent[0]["mac"])
+        self.assertEqual(sent[0]["x"], 1)
+        self.assertEqual(sent[0]["y"], 1)
+        self.assertFalse(sent[0]["moving"])
         corner.debug = False
         corner._emit_card({"op": "update"})
         self.assertEqual(sent[1]["input"], "")
@@ -971,6 +1139,9 @@ class SpendTests(unittest.TestCase):
         corner.result = {"items": [], "note": "Try", "error": "", "spend": "Jev 0.0025¢ over 1"}
         corner.last_input = '{"model": "jev-latest"}'
         corner.mac_keys = True
+        corner.place = "bottom-right"
+        corner.place_pending = ""
+        corner.place_due = 0.0
         corner.usage = [{"t": 1, "chord": "64:return"}]
         sent = []
         corner.emit = lambda payload: sent.append(payload)
