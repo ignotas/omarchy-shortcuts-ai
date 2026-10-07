@@ -1147,6 +1147,56 @@ class FullRankTests(unittest.TestCase):
         ordered = [row["description"] for row in slice_rows(terminal + menus, shares, ["Alacritty", "menu"])[0]]
         self.assertEqual(ordered[:2], ["Terminal", "Tmux keybindings"])
 
+    def test_the_latest_mouse_effect_leads_its_shortcut(self):
+        commands = [
+            self._command("1", "Terminal"),
+            self._command("2", "Network"),
+            self._command("3", "Browser"),
+            self._command("4", "Close window"),
+            self._command("5", "Quit (close window)"),
+            self._command("6", "Switch to workspace 2"),
+            self._command("7", "Move window to workspace 2"),
+            self._command("8", "Switch to workspace 10"),
+            self._command("9", "Switch to workspace 1"),
+        ]
+        probabilities = {"1": 0.5, "3": 0.9, "2": 0.05}
+        rows, pool = slice_rows(commands, probabilities, ["Alacritty"], actions=["opened wifi"])
+        self.assertEqual(rows[0]["description"], "Network")
+        self.assertEqual(rows[0]["percent"], 5)
+        self.assertTrue(pool[0].get("led"))
+        self.assertEqual(rows[1]["description"], "Terminal")
+
+        switched = slice_rows(
+            commands, probabilities, ["Alacritty"],
+            actions=["workspace 2", "focused chromium"],
+        )[0]
+        self.assertEqual(switched[0]["description"], "Switch to workspace 2")
+        self.assertEqual(switched[0]["percent"], "")
+
+        numbered = slice_rows(
+            commands, probabilities, ["Alacritty"],
+            actions=["workspace 1"],
+        )[0]
+        self.assertEqual(numbered[0]["description"], "Switch to workspace 1")
+
+        closed = slice_rows(
+            commands, probabilities, ["Alacritty"],
+            actions=["closed a window"],
+        )[0]
+        self.assertEqual(closed[0]["description"], "Close window")
+
+        untouched = slice_rows(
+            commands, probabilities, ["Alacritty"],
+            actions=["focused chromium"],
+        )[0]
+        self.assertEqual(untouched[0]["description"], "Terminal")
+
+        aside = {commands[1]["chord_id"]: {"shows": UNUSED_SHOWS, "penalty": 1.0, "at": 10}}
+        led = slice_rows(
+            commands, probabilities, ["Alacritty"], aside, now=10, actions=["opened wifi"],
+        )[0]
+        self.assertEqual(led[0]["description"], "Network")
+
     def test_exploration_leaves_out_the_five_names_and_waits_behind_them(self):
         terminal = self._command("1", "Terminal")
         network = self._command("2", "Network")
