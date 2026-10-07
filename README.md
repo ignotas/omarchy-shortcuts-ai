@@ -1,6 +1,6 @@
 # Shortcuts AI
 
-Bottom-right corner assistant for [Omarchy](https://omarchy.org/). Move the pointer into the corner and it offers up to five commands that fit what is on screen.
+Corner assistant for [Omarchy](https://omarchy.org/). It starts in the bottom-right. Move the pointer into that corner and it offers up to five commands that fit what is on screen.
 
 The card in this screenshot opens in the bottom-right corner.
 
@@ -88,7 +88,9 @@ Those five names, the recent actions, the last card, and both probability maps a
 
 Jev charges input tokens only, at $0.042 per million. Output is free. Each reply's `usage.input_tokens` is added to `~/.local/state/omarchy/shortcuts-ai/jev.json`. A cached open does not add a call.
 
-The cost stays off the card until debug is on. Put the pointer in the corner and press D. That D is swallowed, and a small Pac-Man eats it. The same corner keeps the card open, so D is still swallowed while the pointer is on the card. The card closes in the same moment the pointer leaves it. D types normally again once it is gone. Press D there again to hide the cost. The choice is remembered in `~/.local/state/omarchy/shortcuts-ai/debug`.
+Shortcuts AI does not add a shortcut of its own. While the corner is active it captures the letter D, and that press turns debug on. The arrow keys jump the card from corner to corner. From the bottom-left, up lands in the top-left and right lands in the bottom-right. The pointer is ignored while the card is up and jumping. The corner is saved when the card disappears, and the mouse opens the card there. It starts in the bottom-right.
+
+The cost stays off the card until debug is on. Put the pointer in the corner and press D. That press turns debug on. The D is swallowed, and a small Pac-Man eats it. The same corner keeps the card open, so D is still swallowed while the pointer is on the card. The card closes in the same moment the pointer leaves it. D types normally again once it is gone. Press D there again to hide the cost. The choice is remembered in `~/.local/state/omarchy/shortcuts-ai/debug`.
 
 While debug is on, the card grows to the left and shows the last request built for Jev. On a Mac, that side also names the keys: ⌘ Command is Super, and ⌥ Option is Alt.
 
@@ -98,7 +100,7 @@ Presses are counted per shortcut in `~/.local/state/omarchy/shortcuts-ai/usage.j
 
 Each time a shortcut is on the card and you do not use it, it loses a fifth of its chance. After five times it is fully aside, on the unused list in `unused.json`. That loss fades over a day from the last ignored display, so the shortcut can come back. Using it once clears that ignored-display count. Presses from the last hour are separate, and they stay until the hour passes. The list stays on this machine. It is not sent to Jev, and a repeated screen still reuses the cached answer.
 
-Holding a key does not add extra presses. Plain typing is not recorded. D and Shift+D in the corner count as one shortcut, Corner debug.
+Holding a key does not add extra presses. Plain typing is not recorded. D and the arrow keys are captured only while the corner is active. They are not shortcuts the plugin adds.
 
 ## Key
 

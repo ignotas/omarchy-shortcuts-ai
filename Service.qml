@@ -5,7 +5,7 @@ import Quickshell.Io
 import Quickshell.Wayland
 import qs.Commons
 
-// Bottom-right hot corner. The daemon watches the pointer, so this window
+// Hot corner. The daemon watches the pointer, so this window
 // exists only while the card is up and never covers the rest of the screen.
 Item {
   id: root
@@ -27,6 +27,9 @@ Item {
   property real chompT: 0
   property int cardHeight: 0
   property bool cardHeld: false
+  property real placeX: 1
+  property real placeY: 1
+  property bool moving: false
 
   readonly property string daemonPath: Qt.resolvedUrl("bin/shortcuts-ai").toString().replace(/^file:\/\//, "")
 
@@ -36,6 +39,13 @@ Item {
     if (message.op === "hide") {
       root.cardHeld = false
       root.open = false
+      root.moving = false
+      return
+    }
+    if (message.op === "place") {
+      root.takePlace(message)
+      if (message.monitor)
+        root.monitorName = message.monitor
       return
     }
     if (message.op === "chomp") {
@@ -54,6 +64,7 @@ Item {
       root.note = message.note || ""
       root.errorText = message.error || ""
       root.takeDebug(message)
+      root.takePlace(message)
       root.open = true
       return
     }
@@ -63,6 +74,7 @@ Item {
       root.note = message.note || ""
       root.errorText = message.error || ""
       root.takeDebug(message)
+      root.takePlace(message)
       return
     }
     if (message.op === "ran") {
@@ -72,6 +84,17 @@ Item {
         root.errorText = message.note || "That shortcut did not run."
       }
     }
+  }
+
+  function takePlace(message) {
+    // Moving has to be true before the corner changes. The card jumps out
+    // from under the pointer, and that hover-leave must not close it.
+    if (message.moving !== undefined)
+      root.moving = !!message.moving
+    if (message.x !== undefined)
+      root.placeX = message.x
+    if (message.y !== undefined)
+      root.placeY = message.y
   }
 
   function takeDebug(message) {
@@ -94,7 +117,8 @@ Item {
   function leave() {
     // The pointer left the card. Close before the next poll. A click hides
     // the card first, and that must not count as the pointer leaving.
-    if (!root.open)
+    // An arrow moves the card out from under the pointer. That is not leaving.
+    if (!root.open || root.moving)
       return
     root.cardHeld = false
     root.open = false
@@ -174,8 +198,10 @@ Item {
 
       Rectangle {
         id: card
-        anchors.right: parent.right
-        anchors.bottom: parent.bottom
+        // Fractions of the free space, so the card stays whole on every spot.
+        // Anchors are not used: clearing one left the card stretched.
+        x: root.placeX * Math.max(0, parent.width - width)
+        y: root.placeY * Math.max(0, parent.height - height)
         readonly property int suggestionWidth: Style.space(440)
         readonly property int inspectorWidth: root.spend !== ""
           ? Math.min(Style.space(620), Math.max(Style.space(320), panel.width - suggestionWidth - Style.space(16)))
@@ -462,10 +488,8 @@ Item {
         z: 2
         width: 146
         height: 56
-        anchors.right: parent.right
-        anchors.bottom: parent.bottom
-        anchors.rightMargin: 8
-        anchors.bottomMargin: 6
+        x: card.x + (root.placeX >= 0.5 ? Math.max(0, card.width - width - 8) : 8)
+        y: card.y + (root.placeY >= 0.5 ? Math.max(0, card.height - height - 6) : 6)
 
         Repeater {
           model: 4

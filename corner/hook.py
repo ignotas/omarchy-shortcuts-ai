@@ -10,21 +10,55 @@ from __future__ import annotations
 from corner.model import FUNCTION_KEYCODE
 
 
-def dkey_source(log_path: str, keycode: int) -> str:
-    """Swallow d and Shift+D only while the corner is armed.
+def dkey_source(log_path: str, keycode: int, arrow_path: str | None = None) -> str:
+    """Swallow d, Shift+D, and the arrow keys only while the corner is armed.
 
     hl.on watches a key and still delivers it to the focused window. hl.bind
-    consumes it. Both spellings are bound because Hyprland stores the key
-    string as given. A press that matches two of them is counted once.
+    consumes it. Both spellings of D are bound because Hyprland stores the
+    key string as given. A press that matches two of them is counted once.
     Ctrl, Alt, and Super chords are left alone, including Super+Shift+D.
     Each bind object is removed with :unbind(). hl.unbind("D") would also
-    remove every other shortcut on D.
+    remove every other shortcut on D. Arrow keys are bound when a path is
+    given. A press writes the direction and is not a debug press.
     """
     if any(char in log_path for char in "\n\"'\\"):
         raise ValueError("debug key path must be a plain absolute path")
+    if arrow_path is not None and any(char in arrow_path for char in "\n\"'\\"):
+        raise ValueError("arrow path must be a plain absolute path")
     code = int(keycode)
     if code < 1 or code > 255:
         raise ValueError("debug keycode is out of range")
+    arrow_lua = ""
+    arrow_bind = ""
+    if arrow_path:
+        # Append in this process. A shell printf waits on Hyprland's command
+        # queue, and that wait is the lag before the card jumps. One press is
+        # one corner, so the bind does not repeat.
+        arrow_lua = f"""
+local arrows = "{arrow_path}"
+local function arrow(name)
+  local file = io.open(arrows, "a")
+  if not file then return end
+  file:write(name, "\\n")
+  file:flush()
+  file:close()
+end
+local function bind_arrow(spec, name)
+  local ok, bind = pcall(hl.bind, spec, function() arrow(name) end, {{ description = "Move corner" }})
+  return ok and bind or nil
+end
+"""
+        arrow_bind = """
+    local directions = { "left", "right", "up", "down" }
+    for _, name in ipairs(directions) do
+      local bind = bind_arrow(name, name)
+      if not bind then
+        for _, old in ipairs(binds) do pcall(function() old:unbind() end) end
+        return "failed"
+      end
+      binds[#binds + 1] = bind
+    end
+"""
     # `code` is the layout's D key (XKB keycode, evdev + 8).
     return f"""
 if _G.ignotas_shortcuts_ai_dkey then return "already" end
@@ -39,6 +73,7 @@ local function bite()
   last_bite = now
   hl.exec_cmd(string.format("printf '1\\\\n' >> '%s'", path))
 end
+{arrow_lua}
 function _G.ignotas_shortcuts_ai_set_arm(on)
   if on then
     if held then return "same" end
@@ -52,6 +87,7 @@ function _G.ignotas_shortcuts_ai_set_arm(on)
       end
       binds[#binds + 1] = bind
     end
+{arrow_bind}
     held = binds
     return "bound"
   end
