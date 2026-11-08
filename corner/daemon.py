@@ -91,6 +91,7 @@ class Corner:
         self.out_lock = threading.Lock()
         self.state_lock = threading.Lock()
         self.arrow_lock = threading.Lock()
+        self.dkey_lock = threading.Lock()
         self.usage: list[dict] = []
         self.recent: deque[str] = deque(maxlen=RECENT_EVENTS)
         self.apps: list[str] = []
@@ -163,6 +164,7 @@ class Corner:
         threading.Thread(target=self._events, name="corner-events", daemon=True).start()
         threading.Thread(target=self._pointer, name="corner-pointer", daemon=True).start()
         threading.Thread(target=self._arrows, name="corner-arrows", daemon=True).start()
+        threading.Thread(target=self._dkeys, name="corner-dkeys", daemon=True).start()
         threading.Thread(target=self._hook_loop, name="corner-hook", daemon=True).start()
         for line in sys.stdin:
             line = line.strip()
@@ -781,26 +783,38 @@ class Corner:
             self.arm_at = 0.0
 
     def _take_dkey(self) -> None:
-        try:
-            size = self.dkey_path.stat().st_size
-        except OSError:
-            return
-        if size < self.dkey_offset:
-            self.dkey_offset = 0
-        if size == self.dkey_offset:
-            return
-        with self.dkey_path.open("rb") as handle:
-            handle.seek(self.dkey_offset)
-            data = handle.read()
-        self.dkey_offset += len(data)
-        for _ in range(data.count(b"\n")):
-            self._on_corner_d()
-        if self.dkey_offset >= size and self.dkey_offset > 4096:
+        with self.dkey_lock:
             try:
-                self.dkey_path.write_bytes(b"")
-                self.dkey_offset = 0
+                size = self.dkey_path.stat().st_size
             except OSError:
                 return
+            if size < self.dkey_offset:
+                self.dkey_offset = 0
+            if size == self.dkey_offset:
+                return
+            with self.dkey_path.open("rb") as handle:
+                handle.seek(self.dkey_offset)
+                data = handle.read()
+            self.dkey_offset += len(data)
+            if self.dkey_offset >= size and self.dkey_offset > 4096:
+                try:
+                    self.dkey_path.write_bytes(b"")
+                    self.dkey_offset = 0
+                except OSError:
+                    pass
+        for _ in range(data.count(b"\n")):
+            self._on_corner_d()
+
+    def _dkeys(self) -> None:
+        """Toggle debug as soon as D appends a line. The pointer poll can sit
+        inside a cursor read for a third of a second, and the chomp must not wait."""
+        watch = _AppendWatch(self.dkey_path)
+        try:
+            while True:
+                self._take_dkey()
+                watch.wait(0.2)
+        finally:
+            watch.close()
 
     def _arrows(self) -> None:
         """Jump as soon as a key appends a line. The pointer poll can sit
@@ -1270,7 +1284,7 @@ def _read_key() -> str:
 
 
 def _arms_d(zone: str) -> bool:
-    """Pac-Man eats D in the hotspot and while the pointer is still on the open card.
+    """C / c eats D in the hotspot and while the pointer is still on the open card.
 
     Approach only prefetches. Away is the rest of the screen.
     """

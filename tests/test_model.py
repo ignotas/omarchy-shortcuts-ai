@@ -868,7 +868,12 @@ class HookTests(unittest.TestCase):
         self.assertNotIn("non_consuming", source)
         self.assertNotIn("input.keyboard.key", source)
         self.assertNotIn("chords.log", source)
-        self.assertIn("printf '1\\\\n'", source)
+        bite_fn = source.split("local function bite", 1)[1].split("local function", 1)[0]
+        self.assertIn('io.open(path, "a")', bite_fn)
+        self.assertIn('file:write("1\\n")', bite_fn)
+        self.assertIn("file:flush()", bite_fn)
+        self.assertNotIn("exec_cmd", bite_fn)
+        self.assertNotIn("printf", bite_fn)
         arrows = dkey_source(
             "/home/ignotas/.local/state/omarchy/shortcuts-ai/dkey.log",
             40,
@@ -1048,6 +1053,34 @@ class ZoneTests(unittest.TestCase):
         self.assertEqual([item["y"] for item in sent], [1.0, 0.0])
         self.assertEqual(corner.place, (0.0, 0.0))
         self.assertTrue(all(item["moving"] for item in sent))
+
+    def test_each_d_line_chomps_once_as_soon_as_it_is_read(self):
+        corner = object.__new__(Corner)
+        corner.state_lock = threading.Lock()
+        corner.dkey_lock = threading.Lock()
+        corner.monitor = "eDP-1"
+        corner.debug = False
+        corner.phase = "away"
+        corner.session = 1
+        corner.result = {}
+        corner.usage = []
+        hits = []
+        corner._remember_chord = lambda ident: hits.append(("chord", ident))
+        corner._toggle_debug = lambda: hits.append(("debug",))
+        sent = []
+        corner.emit = lambda payload: sent.append(dict(payload))
+        with tempfile.TemporaryDirectory() as tmp:
+            corner.dkey_path = Path(tmp) / "dkey.log"
+            corner.dkey_path.write_text("1\n1\n", encoding="utf-8")
+            corner.dkey_offset = 0
+            corner._take_dkey()
+            corner._take_dkey()
+        self.assertEqual(
+            hits,
+            [("chord", CORNER_DEBUG_CHORD), ("debug",), ("chord", CORNER_DEBUG_CHORD), ("debug",)],
+        )
+        self.assertEqual([item["op"] for item in sent], ["chomp", "chomp"])
+        self.assertEqual([item["monitor"] for item in sent], ["eDP-1", "eDP-1"])
 
 
 class SpendTests(unittest.TestCase):

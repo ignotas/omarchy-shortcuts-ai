@@ -90,7 +90,7 @@ Jev charges input tokens only, at $0.042 per million. Output is free. Each reply
 
 Shortcuts AI does not add a shortcut of its own. While the corner is active it captures the letter D, and that press turns debug on. The arrow keys jump the card from corner to corner. From the bottom-left, up lands in the top-left and right lands in the bottom-right. The pointer is ignored while the card is up and jumping. The corner is saved when the card disappears, and the mouse opens the card there. It starts in the bottom-right.
 
-The cost stays off the card until debug is on. Put the pointer in the corner and press D. That press turns debug on. The D is swallowed, and a small Pac-Man eats it. The same corner keeps the card open, so D is still swallowed while the pointer is on the card. The card closes in the same moment the pointer leaves it. D types normally again once it is gone. Press D there again to hide the cost. The choice is remembered in `~/.local/state/omarchy/shortcuts-ai/debug`.
+The cost stays off the card until debug is on. Put the pointer in the corner and press D. That press turns debug on. The D is swallowed, and a toggling `C` / `c` moves across and eats it. The same corner keeps the card open, so D is still swallowed while the pointer is on the card. The card closes in the same moment the pointer leaves it. D types normally again once it is gone. Press D there again to hide the cost. The choice is remembered in `~/.local/state/omarchy/shortcuts-ai/debug`.
 
 While debug is on, the card grows to the left and shows the last request built for Jev. On a Mac, that side also names the keys: ⌘ Command is Super, and ⌥ Option is Alt.
 

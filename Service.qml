@@ -1,5 +1,4 @@
 import QtQuick
-import QtQuick.Shapes
 import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
@@ -486,183 +485,40 @@ Item {
         visible: root.chomping
         enabled: false
         z: 2
-        width: 146
+        width: 120
         height: 56
         x: card.x + (root.placeX >= 0.5 ? Math.max(0, card.width - width - 8) : 8)
         y: card.y + (root.placeY >= 0.5 ? Math.max(0, card.height - height - 6) : 6)
 
-        Repeater {
-          model: 4
-          Rectangle {
-            required property int index
-            width: 5
-            height: 5
-            radius: 3
-            color: "#b4b4c0"
-            anchors.verticalCenter: parent.verticalCenter
-            x: 36 + index * 16
-            // Gone once Pac-Man's mouth reaches the pellet.
-            visible: pac.x + 18 < x
-          }
-        }
-
-        Item {
+        Text {
           id: letter
-          width: 42
-          height: 44
+          text: "D"
+          color: "#f4f1ff"
+          style: Text.Outline
+          styleColor: "#2c2840"
+          font.pixelSize: 28
+          font.bold: true
           anchors.right: parent.right
           anchors.verticalCenter: parent.verticalCenter
+          // Gone once the C reaches it.
           opacity: root.chompT < 0.5 ? 1 : Math.max(0, 1 - (root.chompT - 0.5) / 0.28)
-
-          // Straight stem, round bowl: the silhouette is a D. The black
-          // counter is the hole of that D, with the ghost eyes inside it.
-          Shape {
-            anchors.fill: parent
-            preferredRendererType: Shape.CurveRenderer
-
-            ShapePath {
-              fillColor: "#f4f1ff"
-              strokeColor: "#2c2840"
-              strokeWidth: 1.4
-              joinStyle: ShapePath.RoundJoin
-              startX: 2
-              startY: 28
-              PathLine { x: 2; y: 3 }
-              PathLine { x: 16; y: 3 }
-              PathAngleArc {
-                centerX: 16
-                centerY: 15.5
-                radiusX: 14
-                radiusY: 12.5
-                startAngle: -90
-                sweepAngle: 180
-              }
-              PathLine { x: 2; y: 28 }
-            }
-          }
-
-          Row {
-            x: 2
-            y: 24
-            spacing: 0
-            Repeater {
-              model: 3
-              Rectangle {
-                required property int index
-                width: 10
-                height: 12
-                radius: 5
-                color: "#f4f1ff"
-                border.color: "#2c2840"
-                border.width: 1
-              }
-            }
-          }
-
-          Rectangle {
-            x: 3
-            y: 24
-            width: 26
-            height: 8
-            color: "#f4f1ff"
-          }
-
-          Shape {
-            anchors.fill: parent
-            preferredRendererType: Shape.CurveRenderer
-
-            ShapePath {
-              fillColor: "#14121c"
-              strokeColor: "#14121c"
-              strokeWidth: 1
-              joinStyle: ShapePath.RoundJoin
-              startX: 8
-              startY: 24
-              PathLine { x: 8; y: 7 }
-              PathLine { x: 15; y: 7 }
-              PathAngleArc {
-                centerX: 15
-                centerY: 15.5
-                radiusX: 9
-                radiusY: 8.5
-                startAngle: -90
-                sweepAngle: 180
-              }
-              PathLine { x: 8; y: 24 }
-            }
-          }
-
-          Row {
-            x: 12
-            y: 11
-            spacing: 2
-            Repeater {
-              model: 2
-              Item {
-                required property int index
-                width: 6
-                height: 7
-                Rectangle {
-                  anchors.fill: parent
-                  radius: 3
-                  color: "#ffffff"
-                }
-                Rectangle {
-                  width: 3
-                  height: 3
-                  radius: 1.5
-                  color: "#1a1408"
-                  x: 0.5
-                  y: 2.6
-                }
-              }
-            }
-          }
         }
 
-        Item {
-          id: pac
-          width: 28
-          height: 28
+        Text {
+          id: chomper
+          // C / c toggle: the open side faces the D and looks like a bite.
+          text: Math.sin(root.chompT * Math.PI * 8) >= 0 ? "C" : "c"
+          color: "#ffcc00"
+          style: Text.Outline
+          styleColor: "#1a1408"
+          font.pixelSize: 28
+          font.bold: true
           anchors.verticalCenter: parent.verticalCenter
-          readonly property real tick: root.chompT
-          readonly property real mouth: 10 + Math.abs(Math.sin(tick * Math.PI * 3)) * 46
           x: {
-            var travel = Math.max(0, letter.x - width + 8)
-            var u = Math.min(1, tick / 0.45)
+            var travel = Math.max(0, letter.x - implicitWidth + 6)
+            var u = Math.min(1, root.chompT / 0.45)
             u = u * u * (3 - 2 * u)
             return u * travel
-          }
-
-          Shape {
-            anchors.fill: parent
-            preferredRendererType: Shape.CurveRenderer
-
-            ShapePath {
-              fillColor: "#ffcc00"
-              strokeColor: "#1a1408"
-              strokeWidth: 1.5
-              startX: 14
-              startY: 14
-              PathAngleArc {
-                centerX: 14
-                centerY: 14
-                radiusX: 12
-                radiusY: 12
-                startAngle: pac.mouth
-                sweepAngle: 360 - pac.mouth * 2
-              }
-              PathLine { x: 14; y: 14 }
-            }
-          }
-
-          Rectangle {
-            width: 4
-            height: 4
-            radius: 2
-            color: "#1a1408"
-            x: 12
-            y: 6
           }
         }
       }

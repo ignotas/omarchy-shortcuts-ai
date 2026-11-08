@@ -60,6 +60,9 @@ end
     end
 """
     # `code` is the layout's D key (XKB keycode, evdev + 8).
+    # Append in this process. A shell printf waits on Hyprland's command
+    # queue, and that wait is the lag before debug toggles. Same fix as
+    # the arrow jump.
     return f"""
 if _G.ignotas_shortcuts_ai_dkey then return "already" end
 _G.ignotas_shortcuts_ai_dkey = true
@@ -71,7 +74,11 @@ local function bite()
   local now = os.clock()
   if now - last_bite < 0.05 then return end
   last_bite = now
-  hl.exec_cmd(string.format("printf '1\\\\n' >> '%s'", path))
+  local file = io.open(path, "a")
+  if not file then return end
+  file:write("1\\n")
+  file:flush()
+  file:close()
 end
 {arrow_lua}
 function _G.ignotas_shortcuts_ai_set_arm(on)
